@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ABA 支付測試</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: Arial, sans-serif;
+            background: #f5f5f5;
+            padding: 20px;
+        }
+        
+        .payment-container {
+            max-width: 400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.1);
+        }
+        
+        .order-info {
+            border-bottom: 1px solid #eee;
+            padding-bottom: 16px;
+            margin-bottom: 16px;
+        }
+        
+        .order-info h3 {
+            color: #333;
+            margin-bottom: 12px;
+        }
+        
+        .order-item {
+            display: flex;
+            justify-content: space-between;
+            margin: 8px 0;
+            color: #666;
+        }
+        
+        .total-amount {
+            display: flex;
+            justify-content: space-between;
+            font-size: 20px;
+            font-weight: bold;
+            color: #e63946;
+            margin: 16px 0;
+        }
+        
+        .payment-button {
+            width: 100%;
+            padding: 16px;
+            background: #0066cc;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            margin-bottom: 12px;
+        }
+        
+        .payment-button:active {
+            background: #0052a3;
+        }
+        
+        .payment-button.aba {
+            background: #0066cc;
+        }
+        
+        .payment-button.qr {
+            background: #52b788;
+        }
+        
+        .status-message {
+            text-align: center;
+            padding: 12px;
+            border-radius: 6px;
+            margin-top: 12px;
+            display: none;
+        }
+        
+        .status-message.success {
+            background: #d4edda;
+            color: #155724;
+            display: block;
+        }
+        
+        .status-message.error {
+            background: #f8d7da;
+            color: #721c24;
+            display: block;
+        }
+        
+        .status-message.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            display: block;
+        }
+        
+        .test-options {
+            margin-top: 24px;
+            padding-top: 24px;
+            border-top: 2px dashed #ddd;
+        }
+        
+        .test-options h4 {
+            color: #666;
+            margin-bottom: 12px;
+            font-size: 14px;
+        }
+        
+        .test-button {
+            width: 100%;
+            padding: 12px;
+            background: #6c757d;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            cursor: pointer;
+            margin-bottom: 8px;
+        }
+        
+        .log-area {
+            margin-top: 16px;
+            padding: 12px;
+            background: #f8f9fa;
+            border-radius: 6px;
+            font-size: 12px;
+            color: #495057;
+            max-height: 200px;
+            overflow-y: auto;
+            font-family: monospace;
+        }
+    </style>
+</head>
+<body>
+    <div class="payment-container">
+        <!-- 訂單資訊 -->
+        <div class="order-info">
+            <h3>訂單資訊</h3>
+            <div class="order-item">
+                <span>訂單號:</span>
+                <span id="orderId">ORDER20241203001</span>
+            </div>
+            <div class="order-item">
+                <span>商品:</span>
+                <span>遊戲儲值</span>
+            </div>
+            <div class="total-amount">
+                <span>支付金額:</span>
+                <span id="amount">$10.00 USD</span>
+            </div>
+        </div>
+
+        <!-- 支付按鈕 -->
+        <button class="payment-button aba" onclick="payWithABAApp()">
+            🏦 使用 ABA Mobile 支付
+        </button>
+
+        <button class="payment-button qr" onclick="payWithQR()">
+            📱 顯示 QR Code 支付
+        </button>
+
+        <!-- 狀態訊息 -->
+        <div id="statusMessage" class="status-message"></div>
+
+        <!-- 測試選項 -->
+        <div class="test-options">
+            <h4>🧪 測試選項 (開發用)</h4>
+            
+            <button class="test-button" onclick="testScheme1()">
+                測試 1: abamobilebank://
+            </button>
+            
+            <button class="test-button" onclick="testScheme2()">
+                測試 2: aba://
+            </button>
+            
+            <button class="test-button" onclick="testScheme3()">
+                測試 3: intent:// (Android)
+            </button>
+            
+            <button class="test-button" onclick="testUniversalLink()">
+                測試 4: Universal Link
+            </button>
+            
+            <button class="test-button" onclick="detectEnvironment()">
+                檢測當前環境
+            </button>
+
+            <!-- 日誌區域 -->
+            <div id="logArea" class="log-area"></div>
+        </div>
+    </div>
+
+    <script>
+        // 日誌函數
+        function log(message) {
+            const logArea = document.getElementById('logArea');
+            const timestamp = new Date().toLocaleTimeString();
+            logArea.innerHTML += `[${timestamp}] ${message}<br>`;
+            logArea.scrollTop = logArea.scrollHeight;
+            console.log(message);
+        }
+
+        // 顯示狀態訊息
+        function showStatus(message, type = 'info') {
+            const statusEl = document.getElementById('statusMessage');
+            statusEl.textContent = message;
+            statusEl.className = `status-message ${type}`;
+            
+            if (type !== 'error') {
+                setTimeout(() => {
+                    statusEl.style.display = 'none';
+                }, 5000);
+            }
+        }
+
+        // 檢測環境
+        function detectEnvironment() {
+            const ua = navigator.userAgent.toLowerCase();
+            let env = '瀏覽器: ';
+            
+            if (ua.indexOf('micromessenger') > -1) {
+                env += 'WeChat';
+            } else if (ua.indexOf('line') > -1) {
+                env += 'Line';
+            } else if (ua.indexOf('fbav') > -1 || ua.indexOf('fban') > -1) {
+                env += 'Facebook';
+            } else if (ua.indexOf('instagram') > -1) {
+                env += 'Instagram';
+            } else if (ua.indexOf('chrome') > -1) {
+                env += 'Chrome';
+            } else if (ua.indexOf('safari') > -1) {
+                env += 'Safari';
+            } else {
+                env += 'Unknown';
+            }
+            
+            const os = /android/i.test(ua) ? 'Android' : /iphone|ipad|ipod/i.test(ua) ? 'iOS' : 'Unknown';
+            
+            log(`環境: ${env}, 系統: ${os}`);
+            log(`User Agent: ${navigator.userAgent}`);
+            showStatus(`${env} / ${os}`, 'info');
+        }
+
+        // 主要支付函數 - 智能 Deep Link
+        function payWithABAApp() {
+            log('開始 ABA Mobile 支付流程');
+            showStatus('正在打開 ABA Mobile...', 'info');
+            
+            const orderId = document.getElementById('orderId').textContent;
+            const amount = '10.00';
+            
+            // 檢測環境
+            const ua = navigator.userAgent.toLowerCase();
+            const isWeChat = ua.indexOf('micromessenger') > -1;
+            const isAndroid = /android/i.test(ua);
+            const isIOS = /iphone|ipad|ipod/i.test(ua);
+            
+            // WeChat 環境需要特殊處理
+            if (isWeChat) {
+                log('檢測到 WeChat 環境');
+                showStatus('請點擊右上角「...」在瀏覽器中打開', 'error');
+                return;
+            }
+            
+            // 構建 deep link (從搜尋結果得知的格式)
+            const deepLink = `abamobilebank://ababank.com?order=${orderId}&amount=${amount}`;
+            
+            log(`Deep Link: ${deepLink}`);
+            
+            // 嘗試打開 app
+            const startTime = Date.now();
+            window.location.href = deepLink;
+            
+            // Fallback 處理
+            setTimeout(() => {
+                const timeElapsed = Date.now() - startTime;
+                
+                // 如果頁面還在,說明 app 沒有打開
+                if (document.hidden || timeElapsed > 2000) {
+                    log('App 已打開或頁面已切換');
+                    return;
+                }
+                
+                log('App 未安裝,準備跳轉下載頁');
+                
+                // App 沒有安裝,跳轉到下載頁
+                if (isAndroid) {
+                    showStatus('未檢測到 ABA Mobile,跳轉至 Play Store', 'error');
+                    setTimeout(() => {
+                        window.location.href = 'https://play.google.com/store/apps/details?id=com.paygo24.ibank';
+                    }, 1500);
+                } else if (isIOS) {
+                    showStatus('未檢測到 ABA Mobile,跳轉至 App Store', 'error');
+                    setTimeout(() => {
+                        window.location.href = 'https://apps.apple.com/app/aba-mobile/id1458182842';
+                    }, 1500);
+                }
+            }, 1500);
+        }
+
+        // QR Code 支付
+        function payWithQR() {
+            log('選擇 QR Code 支付方式');
+            showStatus('QR Code 支付功能開發中...', 'info');
+            
+            // 這裡應該調用後端 API 生成 KHQR
+            // 然後顯示 QR code 讓用戶掃描
+            alert('QR Code 支付功能需要對接 PayWay QR API\n請先申請 PayWay 商戶帳號');
+        }
+
+        // 測試方案 1: 標準 deep link
+        function testScheme1() {
+            const scheme = 'abamobilebank://ababank.com';
+            log(`測試 Scheme 1: ${scheme}`);
+            window.location.href = scheme;
+            showStatus('已嘗試打開 abamobilebank://', 'info');
+        }
+
+        // 測試方案 2: 簡短 scheme
+        function testScheme2() {
+            const scheme = 'aba://open';
+            log(`測試 Scheme 2: ${scheme}`);
+            window.location.href = scheme;
+            showStatus('已嘗試打開 aba://', 'info');
+        }
+
+        // 測試方案 3: Android Intent
+        function testScheme3() {
+            const intent = 'intent://ababank.com#Intent;scheme=abamobilebank;package=com.paygo24.ibank;end';
+            log(`測試 Android Intent: ${intent}`);
+            window.location.href = intent;
+            showStatus('已嘗試 Android Intent', 'info');
+        }
+
+        // 測試方案 4: Universal Link (如果 ABA 有提供)
+        function testUniversalLink() {
+            const link = 'https://aba.com.kh/app/payment';
+            log(`測試 Universal Link: ${link}`);
+            window.location.href = link;
+            showStatus('已嘗試 Universal Link', 'info');
+        }
+
+        // 頁面載入時檢測環境
+        window.onload = function() {
+            log('頁面載入完成');
+            detectEnvironment();
+        };
+
+        // 監聽頁面可見性變化
+        document.addEventListener('visibilitychange', function() {
+            if (document.hidden) {
+                log('頁面已隱藏 (App 可能已打開)');
+            } else {
+                log('頁面重新可見');
+            }
+        });
+    </script>
+</body>
+</html>
